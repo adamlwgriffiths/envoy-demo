@@ -2,6 +2,7 @@
 # using python 3's asyncio
 import asyncio
 import json
+from typing import List, Callable
 from async_timeout import timeout as asyncio_timeout
 
 # TODO: add a method that monitors for specific values
@@ -34,7 +35,8 @@ def create_conditions():
     state['c_event'] = asyncio.Condition()
 
 
-async def protocol_x_decoder(message):
+async def protocol_x_decoder(message: str) -> None:
+    '''Decode function that takes a message, and unrolls it into our state struct'''
     async def decode_a(data):
         state['a'] = data
         cond = state['a_event']
@@ -67,9 +69,12 @@ async def protocol_x_decoder(message):
     await decoder(payload)
 
 class UDP_Decoder:
+    '''AsyncIO UDP socket listener
+    
+    calls the provided decoder which handles message'''
     # using python asyncio transport
     # https://docs.python.org/3/library/asyncio-protocol.html#udp-echo-server
-    def __init__(self, decoder):
+    def __init__(self, decoder: Callable):
         self.decoder = decoder
         self.loop = asyncio.get_running_loop()
 
@@ -85,9 +90,12 @@ class UDP_Decoder:
         print('Decoder connection closed')
 
 class UDP_Generator:
+    '''Asyncio UDP socket client
+
+    Generates test messages periodically'''
     # https://docs.python.org/3/library/asyncio-protocol.html#udp-echo-client
     # generates random 'X protocol' messages
-    def __init__(self, on_con_lost):
+    def __init__(self, on_con_lost: Callable):
         self.on_con_lost = on_con_lost
         self.transport = None
         self.loop = asyncio.get_running_loop()
@@ -137,28 +145,32 @@ class UDP_Generator:
         self.on_con_lost.set_result(True)
 
 
-async def await_message(message):
-    # wait for the arrival of the specified message
-    # returns the message name
+async def await_message(message: str) -> str:
+    '''wait for the arrival of the specified message
+    returns the message name'''
     cond = state[f'{message}_event']
     async with cond:
         await cond.wait()
     return message
 
-async def await_all_messages(*messages):
-    # awaits the return of all of the provided messages
-    # note: repeated calls to this may cause undesirable behaviour
-    # as this will only return when ALL messages have arrived
-    # any messages with different frequencies may cause the follow-on
-    # code to miss intermediate values
+async def await_all_messages(*messages) -> List[str]:
+    '''awaits the return of all of the provided messages
+
+    note: repeated calls to this may cause undesirable behaviour
+    as this will only return when ALL messages have arrived
+    any messages with different frequencies may cause the follow-on
+    code to miss intermediate values
+    '''
     tasks = [await_message(x) for x in messages]
     await asyncio.gather(*tasks)
     return messages
 
-async def await_any_messages(*messages):
-    # awaits the return of 1 of the provided messages
-    # awaiting _both_ may cause our follow-on condition to be missed
-    # if they are out of frequency
+async def await_any_messages(*messages) -> List[str]:
+    '''awaits the return of 1 of the provided messages
+
+    awaiting _both_ may cause our follow-on condition to be missed
+    if they are out of frequency
+    '''
     tasks = [await_message(x) for x in messages]
     completed, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
